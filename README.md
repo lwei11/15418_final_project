@@ -2,6 +2,7 @@
 Neural Network Parallelization
 
 ## Title
+Shared vs Data Parallelism in Neural Networks
 
 ## URL
 
