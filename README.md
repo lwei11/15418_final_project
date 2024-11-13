@@ -43,9 +43,9 @@ Questions: Our project is a type of analysis project since we will be looking at
 For the coding language, we plan to use C++ since it works well with NCCL and the types of parallelism that we will be implementing. It is also a bit easier to work with than C and will allow us to focus more on the higher level aspects of our project rather than the nitty gritty details of the underlying implementation. We are using data and model parallelism for our workload because they both work well with different types of neural networks. Using both of them will provide a good analysis of the strengths and weaknesses of each and when a neural network would benefit from one or the other. For the computer choice, we are just going to write the code on our normal computers, but we will run the tests on the PSC machines since we need to use NCCl for our experiments. 
 
 ## Schedule
-Week 0 (Nov 11 - Nov 17): Complete project proposal and learn the basics of NCCL
-Week 1 (Nov 18 - Nov 24): Create starting code for neural network and begin parallelizing the distributed training portion of our neural network
-Week 2 (Nov 25 - Dec 1): Finish up the task from week 1 and run tests with data and model parallelism seperately. Begin working on parallelizing hyperparameter tuning. 
-Week 3: (Dec 2 - Dec 8) Finish up the task from week 2 and run tests with both data and model parallelism combined. Begin working on the poster.
-Week 4 (Dec 9 - Dec 12): Fix any issues if there are any and complete the poster and final project writeup.
+Week 0 (Nov 11 - Nov 17): Complete project proposal and learn the basics of NCCL \\
+Week 1 (Nov 18 - Nov 24): Create starting code for neural network and begin parallelizing the distributed training portion of our neural network \\
+Week 2 (Nov 25 - Dec 1): Finish up the task from week 1 and run tests with data and model parallelism seperately. Begin working on parallelizing hyperparameter tuning. \\
+Week 3: (Dec 2 - Dec 8) Finish up the task from week 2 and run tests with both data and model parallelism combined. Begin working on the poster. \\
+Week 4 (Dec 9 - Dec 12): Fix any issues if there are any and complete the poster and final project writeup. \\
 
