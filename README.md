@@ -14,7 +14,10 @@ Our project aims to explore the differences between model and data parallelism i
 A deep neural network (DNN) is a type of artificial neural network (ANN) with multiple layers between the input and output layers. These intermediate layers are called "hidden layers" because they do not directly interact with the external inputs or outputs, but they process the data through numerous nonlinear transformations. Each layer consists of nodes, or neurons, which are connected to the neurons in the previous and subsequent layers. DNNs are particularly powerful for complex tasks like image recognition, language translation, and natural language processing, where they can capture intricate patterns and relationships in data. 
 
 In this project, we will train DNN for Optical Character Recognition (OCR). The inputs are black-and-white images of 26 handwritten English letters, and the output will be the most probable English letter recognized by the model. In our implementation, the modules we will define for each layer of our DNN contains a Linear layer and a Sigmoid layer. Each layer contains a forward method b = *.FORWARD(a), and a backward method ga = *.BACKWARD(gb). In other words, the forward method yields the output, b, given the input, a; meanwhile, the backward method yields the gradient with respect to the input, ga, given the gradient with respect to the output, gb. A peusocode for training a 2-hidden-layer Neural Network with stochastic gradient descent is as follows:
-
+<img width="949" alt="Forward" src="https://github.com/user-attachments/assets/a13bf00a-fe8e-413a-9e7d-ffeaef346f23">
+<img width="941" alt="Backward" src="https://github.com/user-attachments/assets/3b50343b-aa61-4de5-a848-d9fe50cc5739">
+<img width="975" alt="Train" src="https://github.com/user-attachments/assets/152b1cca-68e0-4235-9cd8-0424299bea4a">
+<img width="948" alt="Test" src="https://github.com/user-attachments/assets/c6bc1dc2-2863-436d-9ceb-babfae9a832b">
 The forward and backward computation step involves applying similar instructions to a large amount of data, thus implies great potential for parallelism. In addition, choosing the best hyper parameters (number of hidden layers, number of neurons each layer, learning rate, number of epochs) with grid search or random search also implies great potential for parallelism.
 
 
