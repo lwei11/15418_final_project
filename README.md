@@ -1,5 +1,4 @@
-# 15418_final_project
-Neural Network Parallelization
+# 15418 Final Project: Neural Network Parallelization
 
 ## Title
 Model vs Data Parallelism in Neural Networks
