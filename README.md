@@ -18,6 +18,7 @@ In this project, we will train DNN for Optical Character Recognition (OCR). The 
 <img width="941" alt="Backward" src="https://github.com/user-attachments/assets/3b50343b-aa61-4de5-a848-d9fe50cc5739">
 <img width="975" alt="Train" src="https://github.com/user-attachments/assets/152b1cca-68e0-4235-9cd8-0424299bea4a">
 <img width="948" alt="Test" src="https://github.com/user-attachments/assets/c6bc1dc2-2863-436d-9ceb-babfae9a832b">
+
 The forward and backward computation step involves applying similar instructions to a large amount of data, thus implies great potential for parallelism. In addition, choosing the best hyper parameters (number of hidden layers, number of neurons each layer, learning rate, number of epochs) with grid search or random search also implies great potential for parallelism.
 
 
