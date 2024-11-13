@@ -5,6 +5,7 @@ Neural Network Parallelization
 Shared vs Data Parallelism in Neural Networks
 
 ## URL
+https://lwei11.github.io/15418_final_project/
 
 ## Summary
 
