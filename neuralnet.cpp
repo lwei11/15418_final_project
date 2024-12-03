@@ -5,6 +5,8 @@
 #include <vector>
 #include <tuple>
 
+#include <mpi.h>
+
 // Helper Functions
 Matrix zero_init(int rows, int cols) {
     return Matrix(rows, Vector(cols, 0.0));
@@ -246,13 +248,27 @@ std::tuple<Matrix, Vector> load_csv(const std::string& file_path) {
 
 // Main function
 int main(int argc, char* argv[]) {
-    if (argc != 10) {
+    if (argc != 11) {
         std::cerr << "Usage: " << argv[0]
                   << " <train_input> <validation_input> <train_out> <validation_out>"
                      " <metrics_out> <num_epochs> <hidden_units> <init_flag> <learning_rate>"
+                     " <nproc> <batch_size>"
                   << std::endl;
         return 1;
     }
+
+    int pid;
+    int nproc;
+
+    // Initialize MPI
+    MPI_Init(&argc, &argv);
+    // Get process rank
+    MPI_Comm_rank(MPI_COMM_WORLD, &pid);
+    // Get total number of processes
+    MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+    MPI_Status status;
+
+    printf("Curr proc is %d\n", pid);
 
     // Parse command-line arguments
     std::string train_input = argv[1];
@@ -269,6 +285,13 @@ int main(int argc, char* argv[]) {
         // Load training and validation data
         auto [X_train, y_train] = load_csv(train_input);
         auto [X_val, y_val] = load_csv(validation_input);
+        
+        int count = 0;
+        for (auto& temp : X_train) {
+            count ++;
+        }
+
+        printf("Num train = %d\n", count);
 
         // Initialize the neural network
         NN nn(
@@ -315,8 +338,10 @@ int main(int argc, char* argv[]) {
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
+        MPI_Finalize();
         return 1;
     }
 
+    MPI_Finalize();
     return 0;
 }
