@@ -66,7 +66,7 @@ public:
     std::tuple<std::vector<double>, std::vector<double>> train(
         const Matrix& X_train, const Vector& y_train,
         const Matrix& X_test, const Vector& y_test,
-        int epochs);
+        int epochs, int batch_size);
     std::tuple<Vector, double> test(const Matrix& X, const Vector& y);
 };
 

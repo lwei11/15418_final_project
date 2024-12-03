@@ -125,6 +125,22 @@ std::tuple<Vector, double> NN::forward(const Vector& x, int y) {
     Vector z = sigmoid.forward(a);
     Vector b = linear2.forward(z);
     return softmax.forward(b, y);
+    // Vector l1 = linear1.forward(x);
+    // Vector z1 = sigmoid.forward(l1);
+    // Vector l2 = linear2.forward(z1);
+    // Vector z2 = sigmoid.forward(l2);
+    // Vector l3 = linear3.forward(z2);
+    // Vector z3 = sigmoid.forward(l3);
+    // Vector l4 = linear4.forward(z3);
+    // Vector z4 = sigmoid.forward(l4);
+    // Vector l5 = linear5.forward(z4);
+    // Vector z5 = sigmoid.forward(l5);
+    // Vector l6 = linear6.forward(z5);
+    // Vector z6 = sigmoid.forward(l6);
+    // Vector l7 = linear7.forward(z6);
+    // Vector z7 = sigmoid.forward(l7);
+    // Vector l8 = linear8.forward(z7);
+    // return softmax.forward(l8, y);
 }
 
 void NN::backward(int y, const Vector& y_hat) {
@@ -153,7 +169,7 @@ double NN::compute_loss(const Matrix& X, const Vector& y) {
 std::tuple<std::vector<double>, std::vector<double>> NN::train(
     const Matrix& X_train, const Vector& y_train,
     const Matrix& X_test, const Vector& y_test,
-    int epochs) {
+    int epochs, int batch_size) {
 
     std::vector<double> train_losses;
     std::vector<double> test_losses;
@@ -280,6 +296,7 @@ int main(int argc, char* argv[]) {
     int hidden_units = std::stoi(argv[7]);
     int init_flag = std::stoi(argv[8]);
     double learning_rate = std::stod(argv[9]);
+    int batch_size = std::stod(argv[10]);
 
     try {
         // Load training and validation data
@@ -303,7 +320,7 @@ int main(int argc, char* argv[]) {
         );
 
         // Train the network
-        auto [train_losses, val_losses] = nn.train(X_train, y_train, X_val, y_val, num_epochs);
+        auto [train_losses, val_losses] = nn.train(X_train, y_train, X_val, y_val, num_epochs, batch_size);
 
         // Test the network on training and validation sets
         auto [train_predictions, train_error] = nn.test(X_train, y_train);
