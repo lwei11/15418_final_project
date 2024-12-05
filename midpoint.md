@@ -22,7 +22,7 @@ Our poster session will be a combination of a demo and a graph. We will demonstr
 ## Preliminary Results
 We have only tested the networks on small datasets for correctness and we can't use NCCL yet since the GHC machines do not support it. So while we don't have preliminary speedup results at this time, we can verify that the network is working correctly with MPI and getting fairly good error/loss depending on the parameters we input.
 <img width="774" alt="Screenshot 2024-12-04 at 8 06 37 PM" src="https://github.com/user-attachments/assets/56977c94-d4e0-497a-a7ee-d208bb33be1e">
-<img width="773" alt="Screenshot 2024-12-04 at 8 06 52 PM" src="https://github.com/user-attachments/assets/054e9951-211d-48e4-a568-83800352455e">
+<img width="773" alt="Screenshot 2024-12-04 at 8 07 29 PM" src="https://github.com/user-attachments/assets/7eda3483-9c76-4171-ae3e-0971d1c4f0f1">
 
 ## Issues
 There aren't any issues at this time. The only thing is that we have to use MPI for our initial implementation and testing since the GHC machines do not have NCCL. This was not expected when we wrote the project proposal, but as we found out later, we added this step into our work schedule. When we convert to NCCL we will have to run tests on PSC which we can't do a lot of, so we need to make sure everything is fully working beforehand.
