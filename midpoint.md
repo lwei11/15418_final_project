@@ -23,3 +23,6 @@ The main focus of our poster sessions will be graphs. This will go over the accu
 We have only tested the networks on small datasets and we can't use NCCL yet since the GHC machines do not support it. So while we don't have preliminary speedup results at this time, we can verify that the network is working correctly with MPI and getting fairly good error/loss depending on the parameters we input.
 
 ## Issues
+There aren't any issues at this time. The only thing is that we have to use MPI for our initial implementation and testing since the GHC machines do not have NCCL. When we convert to NCCL we will have to run tests on PSC which we can't do a lot of, so we need to make sure everything is fully working beforehand.
+
+
