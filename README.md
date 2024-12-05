@@ -5,7 +5,7 @@ Model vs Data Parallelism in Neural Networks
 
 ## URL
 Webpage: https://lwei11.github.io/15418_final_project/ \
-Github Repository: https://github.com/lwei11/15418_final_project
+Github Repository: https://github.com/lwei11/15418_final_project/ \
 Milestone Report: https://lwei11.github.io/15418_final_project/midpoint
 
 ## Summary
