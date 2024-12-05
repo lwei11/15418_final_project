@@ -6,6 +6,7 @@ Model vs Data Parallelism in Neural Networks
 ## URL
 Webpage: https://lwei11.github.io/15418_final_project/ \
 Github Repository: https://github.com/lwei11/15418_final_project
+Milestone Report: https://lwei11.github.io/15418_final_project/midpoint
 
 ## Summary
 Our project aims to explore the differences between model and data parallelism in neural networks. Specifically, we will look at how these types of parallelism differ when they are used in hyperparameter tuning and distributed neural network training. We will use NCCL by Nvidia on the PSC machines to test this.
