@@ -4,6 +4,7 @@
 #include <sstream>
 #include <vector>
 #include <tuple>
+#include <chrono>
 
 #include <mpi.h>
 
@@ -125,11 +126,38 @@ std::tuple<Vector, double> NN::forward(const Vector& x, int y) {
     Vector z = sigmoid.forward(a);
     Vector b = linear2.forward(z);
     return softmax.forward(b, y);
+    // Vector l1 = linear1.forward(x);
+    // Vector z1 = sigmoid.forward(l1);
+    // Vector l2 = linear2.forward(z1);
+    // Vector z2 = sigmoid.forward(l2);
+    // Vector l3 = linear3.forward(z2);
+    // Vector z3 = sigmoid.forward(l3);
+    // Vector l4 = linear4.forward(z3);
+    // Vector z4 = sigmoid.forward(l4);
+    // Vector l5 = linear5.forward(z4);
+    // Vector z5 = sigmoid.forward(l5);
+    // Vector l6 = linear6.forward(z5);
+    // Vector z6 = sigmoid.forward(l6);
+    // Vector l7 = linear7.forward(z6);
+    // Vector z7 = sigmoid.forward(l7);
+    // Vector l8 = linear8.forward(z7);
+    // return softmax.forward(l8, y);
 }
 
 void NN::backward(int y, const Vector& y_hat) {
     Vector db = softmax.backward(y, y_hat);
     Vector dz = linear2.backward(db);
+    Vector da = sigmoid.backward(dz);
+    linear1.backward(da);
+}
+
+Vector NN::backward_1(int y, const Vector& y_hat) {
+    Vector db = softmax.backward(y, y_hat);
+    Vector dz = linear2.backward(db);
+    return dz;
+}
+
+void NN::backward_2(const Vector& dz) {
     Vector da = sigmoid.backward(dz);
     linear1.backward(da);
 }
@@ -148,6 +176,130 @@ double NN::compute_loss(const Matrix& X, const Vector& y) {
     }
 
     return total_loss / X.size();  // Average loss
+}
+
+std::tuple<std::vector<double>, std::vector<double>> NN::train_data(
+    const Matrix& X_train, const Vector& y_train,
+    const Matrix& X_test, const Vector& y_test,
+    int epochs, int batch_size, int nproc, int pid) {
+
+    std::vector<double> train_losses;
+    std::vector<double> test_losses;
+
+    int total_size = X_train.size();
+    std::vector<int> counts(nproc);
+    std::vector<int> displacements(nproc);
+    int rem = X_train.size() % nproc;
+    int total_counts = 0;
+
+    for (int k = 0; k < nproc; k++) {
+        counts[k] = total_size / nproc;
+        if (rem > 0) {
+            counts[k]+=1;
+            rem--;
+        }
+        displacements[k] = total_counts;
+        total_counts += counts[k];
+    }
+
+    int batch_round = counts[0] / batch_size;
+    batch_round = (counts[0] % batch_size == 0) ? batch_round : batch_round + 1;
+    int rows1 = linear1.weights.size();
+    int cols1 = linear1.weights[0].size();
+    int rows2 = linear2.weights.size();
+    int cols2 = linear2.weights[0].size();
+    std::vector<double> send_buffer1(rows1 * cols1);
+    std::vector<double> send_buffer2(rows2 * cols2);
+    std::vector<double> rec_buffer1(rows1 * cols1);
+    std::vector<double> rec_buffer2(rows2 * cols2);
+
+    for (int epoch = 0; epoch < epochs; ++epoch) {
+        // Shuffle the training data for each epoch
+        Matrix X_shuffled = X_train;
+        Vector y_shuffled = y_train;
+
+        // Shuffle data using a random permutation
+        std::vector<size_t> indices(X_train.size());
+        std::iota(indices.begin(), indices.end(), 0);  // Generate indices
+        std::shuffle(indices.begin(), indices.end(), std::mt19937(epoch));
+
+        // inefficient
+        for (size_t i = 0; i < indices.size(); ++i) {
+            X_shuffled[i] = X_train[indices[i]];
+            y_shuffled[i] = y_train[indices[i]];
+        }
+
+        // Train on each data point
+        for (size_t i = 0; i < batch_round; ++i) {
+            // printf("batch_round is %d \n", batch_round);
+            int curr_start = i * batch_size + displacements[pid];
+            int size = (curr_start + batch_size) >= counts[pid] + displacements[pid] ? displacements[pid] + counts[pid] - curr_start : batch_size;
+            // if (pid == 0) {
+            //     printf("Curr start is %d and expected end is %d, correct end is %d\n", curr_start, curr_start + batch_size, counts[pid] + displacements[pid]);
+            // }
+            // printf("Size is %d\n", size);
+            // printf("Count for proc %d is %d\n", pid, counts[pid]);
+            for (size_t j = 0; j < size; ++j) {
+                // if (pid == 0) {
+                //     printf("Curr idx is %d\n", j + curr_start);
+                // }
+                auto [y_hat, loss] = forward(X_shuffled[j + curr_start], 
+                                            y_shuffled[j + curr_start]);  // Forward pass
+                backward(y_shuffled[j + curr_start], y_hat);  // Backpropagation
+                step();  // Update weights using gradients
+            }
+
+            for(int row_i = 0; row_i < rows1; row_i++) {
+                for(int col_j = 0; col_j < cols1; col_j ++) {
+                    send_buffer1[row_i * cols1 + col_j] = linear1.weights[row_i][col_j];
+                }
+            }
+            for(int row_i = 0; row_i < rows2; row_i++) {
+                for(int col_j = 0; col_j < cols2; col_j ++) {
+                    send_buffer2[row_i * cols2 + col_j] = linear2.weights[row_i][col_j];
+                }
+            }
+
+            // printf("----------------------- before MPI_Allreduce -----------------------------\n");
+            //auto start = std::chrono::high_resolution_clock::now();
+
+            MPI_Allreduce(send_buffer1.data(), rec_buffer1.data(), rows1 * cols1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+            MPI_Allreduce(send_buffer2.data(), rec_buffer2.data(), rows2 * cols2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+            
+            // if (pid == 0 && i == 1) {
+            //     auto end = std::chrono::high_resolution_clock::now();
+            //     std::chrono::duration<double> elapsed_time = end - start;
+
+            //     // Print the result
+            //     std::cout << "Elapsed time: " << elapsed_time.count() << " seconds\n";
+            // }
+
+            //After loop completes divide weights by nproc to get average
+            for(int row_i = 0; row_i < rows1; row_i++) {
+                for(int col_j = 0; col_j < cols1; col_j ++) {
+                    linear1.weights[row_i][col_j] = rec_buffer1[row_i * cols1 + col_j] / nproc;
+                }
+            }
+            for(int row_i = 0; row_i < rows2; row_i++) {
+                for(int col_j = 0; col_j < cols2; col_j ++) {
+                    linear2.weights[row_i][col_j] = rec_buffer2[row_i * cols2 + col_j] / nproc;
+                }
+            }
+            // printf("----------------------- after MPI_Allreduce -----------------------------\n");
+        }
+
+        // Compute training and test losses after the epoch
+        double train_loss = compute_loss(X_shuffled, y_shuffled);
+        double test_loss = compute_loss(X_test, y_test);
+
+        train_losses.push_back(train_loss);
+        test_losses.push_back(test_loss);
+        
+        // std::cout << "Epoch " << (epoch + 1) << ": Train Loss = " << train_loss
+        //           << ", Test Loss = " << test_loss << std::endl;
+    }
+
+    return {train_losses, test_losses};
 }
 
 std::tuple<std::vector<double>, std::vector<double>> NN::train(
@@ -187,12 +339,54 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train(
         train_losses.push_back(train_loss);
         test_losses.push_back(test_loss);
 
-        std::cout << "Epoch " << (epoch + 1) << ": Train Loss = " << train_loss
-                  << ", Test Loss = " << test_loss << std::endl;
+        // std::cout << "Epoch " << (epoch + 1) << ": Train Loss = " << train_loss
+        //           << ", Test Loss = " << test_loss << std::endl;
     }
 
     return {train_losses, test_losses};
 }
+
+// std::tuple<std::vector<double>, std::vector<double>> NN::train_model(
+//     const Matrix& X_train, const Vector& y_train,
+//     const Matrix& X_test, const Vector& y_test,
+//     int epochs) {
+
+//     std::vector<double> train_losses;
+//     std::vector<double> test_losses;
+
+//     for (int epoch = 0; epoch < epochs; ++epoch) {
+//         // Shuffle the training data for each epoch
+//         Matrix X_shuffled = X_train;
+//         Vector y_shuffled = y_train;
+
+//         // Shuffle data using a random permutation
+//         std::vector<size_t> indices(X_train.size());
+//         std::iota(indices.begin(), indices.end(), 0);  // Generate indices
+//         std::shuffle(indices.begin(), indices.end(), std::mt19937(epoch));
+
+//         for (size_t i = 0; i < indices.size(); ++i) {
+//             X_shuffled[i] = X_train[indices[i]];
+//             y_shuffled[i] = y_train[indices[i]];
+//         }
+
+//         // Train on each data point
+//         for (size_t i = 0; i < X_shuffled.size(); ++i) {
+//             auto [y_hat, loss] = forward(X_shuffled[i], y_shuffled[i]);  // Forward pass
+//             backward(y_shuffled[i], y_hat);  // Backpropagation
+//             step();  // Update weights using gradients
+//         }
+
+//         // Compute training and test losses after the epoch
+//         double train_loss = compute_loss(X_shuffled, y_shuffled);
+//         double test_loss = compute_loss(X_test, y_test);
+
+//         train_losses.push_back(train_loss);
+//         test_losses.push_back(test_loss);
+
+//         std::cout << "Epoch " << (epoch + 1) << ": Train Loss = " << train_loss
+//                   << ", Test Loss = " << test_loss << std::endl;
+//     }
+// }
 
 std::tuple<Vector, double> NN::test(const Matrix& X, const Vector& y) {
     Vector predictions;  // Store predicted labels
@@ -268,7 +462,7 @@ int main(int argc, char* argv[]) {
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
     MPI_Status status;
 
-    printf("Curr proc is %d\n", pid);
+    // printf("Curr proc is %d\n", pid);
 
     // Parse command-line arguments
     std::string train_input = argv[1];
@@ -280,6 +474,7 @@ int main(int argc, char* argv[]) {
     int hidden_units = std::stoi(argv[7]);
     int init_flag = std::stoi(argv[8]);
     double learning_rate = std::stod(argv[9]);
+    int batch_size = std::stod(argv[10]);
 
     try {
         // Load training and validation data
@@ -291,7 +486,7 @@ int main(int argc, char* argv[]) {
             count ++;
         }
 
-        printf("Num train = %d\n", count);
+        //printf("Num train = %d\n", count);
 
         // Initialize the neural network
         NN nn(
@@ -303,7 +498,16 @@ int main(int argc, char* argv[]) {
         );
 
         // Train the network
-        auto [train_losses, val_losses] = nn.train(X_train, y_train, X_val, y_val, num_epochs);
+        auto start = std::chrono::high_resolution_clock::now();
+
+        auto [train_losses, val_losses] = nn.train_data(X_train, y_train, X_val, y_val, num_epochs, batch_size, nproc, pid);
+        //auto [train_losses, val_losses] = nn.train(X_train, y_train, X_val, y_val, num_epochs);
+
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed_time = end - start;
+
+        // Print the result
+        std::cout << "Elapsed time: " << elapsed_time.count() << " seconds\n";
 
         // Test the network on training and validation sets
         auto [train_predictions, train_error] = nn.test(X_train, y_train);
