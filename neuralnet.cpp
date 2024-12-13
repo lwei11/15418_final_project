@@ -137,63 +137,73 @@ void Linear::step() {
 // Neural Network Implementation
 NN::NN(int input_size, int hidden_size, int output_size, Matrix (*init_fn)(int, int), double lr)
     : linear1(input_size, hidden_size, init_fn, lr),
+      linear2(hidden_size, hidden_size, init_fn, lr),
+      linear3(hidden_size, hidden_size, init_fn, lr),
+      linear4(hidden_size, hidden_size, init_fn, lr),
+      linear5(hidden_size, hidden_size, init_fn, lr),
+      linear6(hidden_size, hidden_size, init_fn, lr),
+      linear7(hidden_size, hidden_size, init_fn, lr),
+      linear8(hidden_size, output_size, init_fn, lr),
       sigmoid(),
-      linear2(hidden_size, output_size, init_fn, lr),
       softmax() {}
 
 std::tuple<Vector, double> NN::forward(const Vector& x, int y) {
     Vector a = linear1.forward(x);
     Vector z = sigmoid.forward(a);
     Vector b = linear2.forward(z);
-    return softmax.forward(b, y);
-    // Vector l1 = linear1.forward(x);
-    // Vector z1 = sigmoid.forward(l1);
-    // Vector l2 = linear2.forward(z1);
-    // Vector z2 = sigmoid.forward(l2);
-    // Vector l3 = linear3.forward(z2);
-    // Vector z3 = sigmoid.forward(l3);
-    // Vector l4 = linear4.forward(z3);
-    // Vector z4 = sigmoid.forward(l4);
-    // Vector l5 = linear5.forward(z4);
-    // Vector z5 = sigmoid.forward(l5);
-    // Vector l6 = linear6.forward(z5);
-    // Vector z6 = sigmoid.forward(l6);
-    // Vector l7 = linear7.forward(z6);
-    // Vector z7 = sigmoid.forward(l7);
-    // Vector l8 = linear8.forward(z7);
-    // return softmax.forward(l8, y);
+    Vector l3 = linear3.forward(b);
+    Vector l4 = linear4.forward(l3);
+    Vector l5 = linear5.forward(l4);
+    Vector l6 = linear6.forward(l5);
+    return softmax.forward(l6, y);
 }
 
 Vector NN::forward_1(const Vector& x, int y) {
     Vector a = linear1.forward(x);
     Vector z = sigmoid.forward(a);
-    return z;
+    Vector b = linear2.forward(z);
+    Vector l3 = linear3.forward(b);
+    return l3;
 }
 
 std::tuple<Vector, double> NN::forward_2(const Vector& z, int y) {
-    Vector b = linear2.forward(z);
-    return softmax.forward(b, y);
+    Vector l4 = linear4.forward(z);
+    Vector l5 = linear5.forward(l4);
+    Vector l6 = linear6.forward(l5);
+    return softmax.forward(l6, y);
 }
 
 void NN::backward(int y, const Vector& y_hat) {
     Vector db = softmax.backward(y, y_hat);
-    Vector dz = linear2.backward(db);
-    Vector da = sigmoid.backward(dz);
+    Vector l4 = linear6.backward(db);
+    Vector l5 = linear5.backward(l4);
+    Vector l6 = linear4.backward(l5);
+    Vector l7 = linear3.backward(l6);
+    Vector l8 = linear2.backward(l7);
+    Vector da = sigmoid.backward(l8);
     linear1.backward(da);
 }
 
-Vector NN::backward_1(int y, const Vector& y_hat) {
+Vector NN::backward_2(int y, const Vector& y_hat) {
     Vector db = softmax.backward(y, y_hat);
-    Vector dz = linear2.backward(db);
-    return dz;
+    Vector l4 = linear6.backward(db);
+    Vector l5 = linear5.backward(l4);
+    Vector l6 = linear4.backward(l5);
+    return l6;
 }
 
-void NN::backward_2(const Vector& dz) {
-    Vector da = sigmoid.backward(dz);
+void NN::backward_1(const Vector& dz) {
+    Vector l7 = linear3.backward(dz);
+    Vector l8 = linear2.backward(l7);
+    Vector da = sigmoid.backward(l8);
     linear1.backward(da);
 }
 
 void NN::step() {
+    linear6.step();
+    linear5.step();
+    linear4.step();
+    linear3.step();
     linear2.step();
     linear1.step();
 }
@@ -467,7 +477,7 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train_model(
 
                 // Backward at stage 0 for each sample, then step
                 for (int b = 0; b < current_batch_size; ++b) {
-                    backward_2(dA1_batch[b]);
+                    backward_1(dA1_batch[b]);
                 }
                 step();
 
@@ -514,7 +524,7 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train_model(
                 // Backward at stage 1
                 std::vector<Vector> dA1_batch(current_batch_size, Vector(A1_dim));
                 for (int b = 0; b < current_batch_size; ++b) {
-                    dA1_batch[b] = backward_1(y_batch_recv[b], y_hat_batch[b]);
+                    dA1_batch[b] = backward_2(y_batch_recv[b], y_hat_batch[b]);
                 }
 
                 // Flatten dA1_batch
