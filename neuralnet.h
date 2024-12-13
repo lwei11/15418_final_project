@@ -56,6 +56,8 @@ public:
     SoftMaxCrossEntropy softmax;
     NN(int input_size, int hidden_size, int output_size, Matrix (init_fn)(int, int), double lr);
     std::tuple<Vector, double> forward(const Vector& x, int y);
+    Vector forward_1(const Vector& x, int y);
+    std::tuple<Vector, double> forward_2(const Vector& z, int y);
     void backward(int y, const Vector& y_hat);
     Vector backward_1(int y, const Vector& y_hat);
     void backward_2(const Vector& y_hat);
@@ -66,6 +68,10 @@ public:
         const Matrix& X_test, const Vector& y_test,
         int epochs);
     std::tuple<std::vector<double>, std::vector<double>> train_data(
+        const Matrix& X_train, const Vector& y_train,
+        const Matrix& X_test, const Vector& y_test,
+        int epochs, int batch_size, int nproc, int pid);
+    std::tuple<std::vector<double>, std::vector<double>> train_model(
         const Matrix& X_train, const Vector& y_train,
         const Matrix& X_test, const Vector& y_test,
         int epochs, int batch_size, int nproc, int pid);

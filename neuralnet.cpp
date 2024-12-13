@@ -25,6 +25,26 @@ Matrix random_init(int rows, int cols) {
     return matrix;
 }
 
+static Vector flatten_matrix(const Matrix& M) {
+        if (M.empty()) return {};
+        size_t rows = M.size();
+        size_t cols = M[0].size();
+        Vector flat(rows * cols);
+        for (size_t i = 0; i < rows; ++i) {
+            std::copy(M[i].begin(), M[i].end(), flat.begin() + i*cols);
+        }
+        return flat;
+    }
+
+// Helper to reshape a flat vector into a Matrix
+static Matrix reshape_matrix(const Vector& flat, size_t rows, size_t cols) {
+    Matrix M(rows, Vector(cols));
+    for (size_t i = 0; i < rows; ++i) {
+        std::copy(flat.begin() + i*cols, flat.begin() + (i+1)*cols, M[i].begin());
+    }
+    return M;
+}
+
 // SoftMaxCrossEntropy Implementation
 Vector SoftMaxCrossEntropy::softmax(const Vector& z) {
     Vector exp_z(z.size());
@@ -142,6 +162,17 @@ std::tuple<Vector, double> NN::forward(const Vector& x, int y) {
     // Vector z7 = sigmoid.forward(l7);
     // Vector l8 = linear8.forward(z7);
     // return softmax.forward(l8, y);
+}
+
+Vector NN::forward_1(const Vector& x, int y) {
+    Vector a = linear1.forward(x);
+    Vector z = sigmoid.forward(a);
+    return z;
+}
+
+std::tuple<Vector, double> NN::forward_2(const Vector& z, int y) {
+    Vector b = linear2.forward(z);
+    return softmax.forward(b, y);
 }
 
 void NN::backward(int y, const Vector& y_hat) {
@@ -295,8 +326,10 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train_data(
         train_losses.push_back(train_loss);
         test_losses.push_back(test_loss);
         
-        // std::cout << "Epoch " << (epoch + 1) << ": Train Loss = " << train_loss
-        //           << ", Test Loss = " << test_loss << std::endl;
+        // if (pid == 0) {
+        //     std::cout << "Epoch " << (epoch + 1) << ": Train Loss = " << train_loss
+        //             << ", Test Loss = " << test_loss << std::endl;
+        // }
     }
 
     return {train_losses, test_losses};
@@ -338,7 +371,7 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train(
 
         train_losses.push_back(train_loss);
         test_losses.push_back(test_loss);
-
+        
         // std::cout << "Epoch " << (epoch + 1) << ": Train Loss = " << train_loss
         //           << ", Test Loss = " << test_loss << std::endl;
     }
@@ -346,47 +379,104 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train(
     return {train_losses, test_losses};
 }
 
-// std::tuple<std::vector<double>, std::vector<double>> NN::train_model(
-//     const Matrix& X_train, const Vector& y_train,
-//     const Matrix& X_test, const Vector& y_test,
-//     int epochs) {
+std::tuple<std::vector<double>, std::vector<double>> NN::train_model(
+    const Matrix& X_train, const Vector& y_train,
+    const Matrix& X_test, const Vector& y_test,
+    int epochs, int batch_size, int nproc, int pid) {
 
-//     std::vector<double> train_losses;
-//     std::vector<double> test_losses;
+    std::vector<double> train_losses;
+    std::vector<double> test_losses;
 
-//     for (int epoch = 0; epoch < epochs; ++epoch) {
-//         // Shuffle the training data for each epoch
-//         Matrix X_shuffled = X_train;
-//         Vector y_shuffled = y_train;
+    Matrix X_shuffled = X_train;
+    Vector y_shuffled = y_train;
 
-//         // Shuffle data using a random permutation
-//         std::vector<size_t> indices(X_train.size());
-//         std::iota(indices.begin(), indices.end(), 0);  // Generate indices
-//         std::shuffle(indices.begin(), indices.end(), std::mt19937(epoch));
+    // Shuffle data using a random permutation
+    int total_samples = X_train.size();
 
-//         for (size_t i = 0; i < indices.size(); ++i) {
-//             X_shuffled[i] = X_train[indices[i]];
-//             y_shuffled[i] = y_train[indices[i]];
-//         }
+    for (int epoch = 0; epoch < epochs; ++epoch) {
+        std::vector<size_t> indices(total_samples);
+        std::iota(indices.begin(), indices.end(), 0);  // Generate indices
+        std::shuffle(indices.begin(), indices.end(), std::mt19937(epoch));
 
-//         // Train on each data point
-//         for (size_t i = 0; i < X_shuffled.size(); ++i) {
-//             auto [y_hat, loss] = forward(X_shuffled[i], y_shuffled[i]);  // Forward pass
-//             backward(y_shuffled[i], y_hat);  // Backpropagation
-//             step();  // Update weights using gradients
-//         }
+        for (size_t i = 0; i < indices.size(); ++i) {
+            X_shuffled[i] = X_train[indices[i]];
+            y_shuffled[i] = y_train[indices[i]];
+        }
+        // Training loop
+        for (int i = 0; i < total_samples; ++i) {
+            if (pid == 0) {
+                // ----- Stage 1 Forward -----
+                const Vector& x = X_shuffled[i];
+                double y = y_shuffled[i];
 
-//         // Compute training and test losses after the epoch
-//         double train_loss = compute_loss(X_shuffled, y_shuffled);
-//         double test_loss = compute_loss(X_test, y_test);
+                Vector A1 = forward_1(x, 0);
 
-//         train_losses.push_back(train_loss);
-//         test_losses.push_back(test_loss);
+                // Send A1 to Rank 1
+                int A1_size = (int)A1.size();
+                MPI_Send(&A1_size, 1, MPI_INT, 1, 0, MPI_COMM_WORLD);
+                MPI_Send(A1.data(), A1_size, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD);
 
-//         std::cout << "Epoch " << (epoch + 1) << ": Train Loss = " << train_loss
-//                   << ", Test Loss = " << test_loss << std::endl;
-//     }
-// }
+                // Send y
+                MPI_Send(&y, 1, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD);
+
+                // Receive y_hat size from Rank 1
+                int y_hat_size;
+                MPI_Recv(&y_hat_size, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                // Receive y_hat
+                Vector y_hat(y_hat_size);
+                MPI_Recv(y_hat.data(), y_hat_size, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                // ----- Stage 1 Backward -----
+                // Rank 0 must wait for dA1 from Rank 1
+                int dA1_size;
+                MPI_Recv(&dA1_size, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                Vector dA1(dA1_size);
+                MPI_Recv(dA1.data(), dA1_size, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                backward_2(dA1);
+                step();
+
+            } else if (pid == 1) {
+                // Rank 1 receives A1 and y from Rank 0
+                int A1_size;
+                MPI_Recv(&A1_size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                Vector A1(A1_size);
+                MPI_Recv(A1.data(), A1_size, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                double y;
+                MPI_Recv(&y, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                // ----- Stage 2 Forward -----
+                auto [y_hat, loss] = forward_2(A1, y);
+
+                // Send y_hat size and y_hat back to Rank 0
+                int y_hat_size = (int)y_hat.size();
+                MPI_Send(&y_hat_size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+                MPI_Send(y_hat.data(), y_hat_size, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+
+                // ----- Stage 2 Backward -----
+                Vector dA1 = backward_1(y, y_hat);
+
+                int dA1_size = (int)dA1.size();
+                MPI_Send(&dA1_size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+                MPI_Send(dA1.data(), dA1_size, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+            }
+        }
+        // Compute training and test losses after the epoch
+        double train_loss = compute_loss(X_shuffled, y_shuffled);
+        double test_loss = compute_loss(X_test, y_test);
+
+        train_losses.push_back(train_loss);
+        test_losses.push_back(test_loss);
+
+        // if (pid == 0) {
+        //     std::cout << "Epoch " << (epoch + 1) << ": Train Loss = " << train_loss
+        //             << ", Test Loss = " << test_loss << std::endl;
+        // }
+    }
+    return {train_losses, test_losses};
+}
 
 std::tuple<Vector, double> NN::test(const Matrix& X, const Vector& y) {
     Vector predictions;  // Store predicted labels
@@ -500,8 +590,9 @@ int main(int argc, char* argv[]) {
         // Train the network
         auto start = std::chrono::high_resolution_clock::now();
 
-        auto [train_losses, val_losses] = nn.train_data(X_train, y_train, X_val, y_val, num_epochs, batch_size, nproc, pid);
-        //auto [train_losses, val_losses] = nn.train(X_train, y_train, X_val, y_val, num_epochs);
+        //auto [train_losses, val_losses] = nn.train_model(X_train, y_train, X_val, y_val, num_epochs, batch_size, nproc, pid);
+        //auto [train_losses, val_losses] = nn.train_data(X_train, y_train, X_val, y_val, num_epochs, batch_size, nproc, pid);
+        auto [train_losses, val_losses] = nn.train(X_train, y_train, X_val, y_val, num_epochs);
 
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed_time = end - start;
@@ -536,9 +627,11 @@ int main(int argc, char* argv[]) {
         }
         metrics_file << "error(train): " << train_error << "\n";
         metrics_file << "error(validation): " << val_error << "\n";
-
-        std::cout << "Training error: " << train_error << std::endl;
-        std::cout << "Validation error: " << val_error << std::endl;
+        
+        if (pid == 0) {
+            std::cout << "Training error: " << train_error << std::endl;
+            std::cout << "Validation error: " << val_error << std::endl;
+        }
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
