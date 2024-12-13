@@ -394,73 +394,139 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train_model(
     int total_samples = X_train.size();
 
     for (int epoch = 0; epoch < epochs; ++epoch) {
+        // Shuffle the data
         std::vector<size_t> indices(total_samples);
-        std::iota(indices.begin(), indices.end(), 0);  // Generate indices
+        std::iota(indices.begin(), indices.end(), 0);
         std::shuffle(indices.begin(), indices.end(), std::mt19937(epoch));
 
         for (size_t i = 0; i < indices.size(); ++i) {
             X_shuffled[i] = X_train[indices[i]];
             y_shuffled[i] = y_train[indices[i]];
         }
-        // Training loop
-        for (int i = 0; i < total_samples; ++i) {
+
+        // Iterate over batches
+        for (int start = 0; start < total_samples; start += batch_size) {
+            int end = std::min(start + batch_size, total_samples);
+            int current_batch_size = end - start;
+
+            // Extract batch
+            Matrix X_batch(current_batch_size);
+            Vector y_batch(current_batch_size);
+            for (int j = 0; j < current_batch_size; ++j) {
+                X_batch[j] = X_shuffled[start + j];
+                y_batch[j] = y_shuffled[start + j];
+            }
+
             if (pid == 0) {
-                // ----- Stage 1 Forward -----
-                const Vector& x = X_shuffled[i];
-                double y = y_shuffled[i];
+                // Forward at stage 1
+                std::vector<Vector> A1_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    A1_batch[b] = forward_1(X_batch[b], 0);
+                }
 
-                Vector A1 = forward_1(x, 0);
+                // Flatten A1_batch
+                int A1_dim = (int)A1_batch[0].size();
+                std::vector<double> A1_flat(current_batch_size * A1_dim);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    std::copy(A1_batch[b].begin(), A1_batch[b].end(),
+                              A1_flat.begin() + b * A1_dim);
+                }
 
-                // Send A1 to Rank 1
-                int A1_size = (int)A1.size();
-                MPI_Send(&A1_size, 1, MPI_INT, 1, 0, MPI_COMM_WORLD);
-                MPI_Send(A1.data(), A1_size, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD);
+                // Send batch metadata and flattened arrays to Rank 1
+                MPI_Send(&current_batch_size, 1, MPI_INT, 1, 0, MPI_COMM_WORLD);
+                MPI_Send(&A1_dim, 1, MPI_INT, 1, 0, MPI_COMM_WORLD);
+                MPI_Send(A1_flat.data(), current_batch_size * A1_dim, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD);
+                MPI_Send(y_batch.data(), current_batch_size, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD);
 
-                // Send y
-                MPI_Send(&y, 1, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD);
+                // Receive y_hat results from Rank 1
+                int y_hat_dim;
+                MPI_Recv(&y_hat_dim, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                std::vector<double> y_hat_flat(current_batch_size * y_hat_dim);
+                MPI_Recv(y_hat_flat.data(), current_batch_size * y_hat_dim, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-                // Receive y_hat size from Rank 1
-                int y_hat_size;
-                MPI_Recv(&y_hat_size, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                // Unflatten y_hat_batch
+                std::vector<Vector> y_hat_batch(current_batch_size, Vector(y_hat_dim));
+                for (int b = 0; b < current_batch_size; ++b) {
+                    std::copy(y_hat_flat.begin() + b * y_hat_dim,
+                              y_hat_flat.begin() + (b + 1) * y_hat_dim,
+                              y_hat_batch[b].begin());
+                }
 
-                // Receive y_hat
-                Vector y_hat(y_hat_size);
-                MPI_Recv(y_hat.data(), y_hat_size, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                // Receive dA1 from Rank 1
+                int dA1_dim;
+                MPI_Recv(&dA1_dim, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                std::vector<double> dA1_flat(current_batch_size * dA1_dim);
+                MPI_Recv(dA1_flat.data(), current_batch_size * dA1_dim, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-                // ----- Stage 1 Backward -----
-                // Rank 0 must wait for dA1 from Rank 1
-                int dA1_size;
-                MPI_Recv(&dA1_size, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                Vector dA1(dA1_size);
-                MPI_Recv(dA1.data(), dA1_size, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                std::vector<Vector> dA1_batch(current_batch_size, Vector(dA1_dim));
+                for (int b = 0; b < current_batch_size; ++b) {
+                    std::copy(dA1_flat.begin() + b * dA1_dim,
+                              dA1_flat.begin() + (b + 1) * dA1_dim,
+                              dA1_batch[b].begin());
+                }
 
-                backward_2(dA1);
+                // Backward at stage 0 for each sample, then step
+                for (int b = 0; b < current_batch_size; ++b) {
+                    backward_2(dA1_batch[b]);
+                }
                 step();
 
             } else if (pid == 1) {
-                // Rank 1 receives A1 and y from Rank 0
-                int A1_size;
-                MPI_Recv(&A1_size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                Vector A1(A1_size);
-                MPI_Recv(A1.data(), A1_size, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                // Receive batch metadata and flattened arrays from Rank 0
+                int current_batch_size;
+                int A1_dim;
+                MPI_Recv(&current_batch_size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Recv(&A1_dim, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-                double y;
-                MPI_Recv(&y, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                std::vector<double> A1_flat(current_batch_size * A1_dim);
+                MPI_Recv(A1_flat.data(), current_batch_size * A1_dim, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-                // ----- Stage 2 Forward -----
-                auto [y_hat, loss] = forward_2(A1, y);
+                std::vector<double> y_batch_recv(current_batch_size);
+                MPI_Recv(y_batch_recv.data(), current_batch_size, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-                // Send y_hat size and y_hat back to Rank 0
-                int y_hat_size = (int)y_hat.size();
-                MPI_Send(&y_hat_size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
-                MPI_Send(y_hat.data(), y_hat_size, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+                // Unflatten A1_batch
+                std::vector<Vector> A1_batch(current_batch_size, Vector(A1_dim));
+                for (int b = 0; b < current_batch_size; ++b) {
+                    std::copy(A1_flat.begin() + b * A1_dim,
+                              A1_flat.begin() + (b + 1) * A1_dim,
+                              A1_batch[b].begin());
+                }
 
-                // ----- Stage 2 Backward -----
-                Vector dA1 = backward_1(y, y_hat);
+                // Forward at stage 2
+                std::vector<Vector> y_hat_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    auto [y_hat, loss] = forward_2(A1_batch[b], y_batch_recv[b]);
+                    y_hat_batch[b] = y_hat;
+                }
 
-                int dA1_size = (int)dA1.size();
-                MPI_Send(&dA1_size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
-                MPI_Send(dA1.data(), dA1_size, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+                int y_hat_dim = (int)y_hat_batch[0].size();
+                // Flatten y_hat_batch
+                std::vector<double> y_hat_flat(current_batch_size * y_hat_dim);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    std::copy(y_hat_batch[b].begin(), y_hat_batch[b].end(),
+                              y_hat_flat.begin() + b * y_hat_dim);
+                }
+
+                // Send y_hat back to Rank 0
+                MPI_Send(&y_hat_dim, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+                MPI_Send(y_hat_flat.data(), current_batch_size * y_hat_dim, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+
+                // Backward at stage 1
+                std::vector<Vector> dA1_batch(current_batch_size, Vector(A1_dim));
+                for (int b = 0; b < current_batch_size; ++b) {
+                    dA1_batch[b] = backward_1(y_batch_recv[b], y_hat_batch[b]);
+                }
+
+                // Flatten dA1_batch
+                std::vector<double> dA1_flat(current_batch_size * A1_dim);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    std::copy(dA1_batch[b].begin(), dA1_batch[b].end(),
+                              dA1_flat.begin() + b * A1_dim);
+                }
+
+                // Send dA1 back to Rank 0
+                MPI_Send(&A1_dim, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+                MPI_Send(dA1_flat.data(), current_batch_size * A1_dim, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
             }
         }
         // Compute training and test losses after the epoch
