@@ -305,32 +305,10 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train_data(
 std::tuple<std::vector<double>, std::vector<double>> NN::train(
     const Matrix& X_train, const Vector& y_train,
     const Matrix& X_test, const Vector& y_test,
-    int epochs, int batch_size, int nproc, int pid) {
+    int epochs) {
 
     std::vector<double> train_losses;
     std::vector<double> test_losses;
-
-    int total_size = X_train.size();
-    std::vector<int> counts(nproc);
-    std::vector<int> displacements(nproc);
-    int rem = X_train.size() % nproc;
-
-    for (int k = 0; k < nproc; k++) {
-        counts[k] = total_size / nproc;
-        counts[k] = rem > k ? counts[k] + 1 : counts[k];
-        displacements[k] = (k == 0) ? 0 : displacements[k-1] + counts[k-1];
-    }
-
-    int batch_round = counts[0] / batch_size;
-    batch_round = (counts[0] % batch_size == 0) ? batch_round : batch_round + 1;
-    int rows1 = linear1.weights.size();
-    int cols1 = linear1.weights[0].size();
-    int rows2 = linear2.weights.size();
-    int cols2 = linear2.weights[0].size();
-    std::vector<double> send_buffer1(rows1 * cols1);
-    std::vector<double> send_buffer2(rows2 * cols2);
-    std::vector<double> rec_buffer1(rows1 * cols1);
-    std::vector<double> rec_buffer2(rows2 * cols2);
 
     for (int epoch = 0; epoch < epochs; ++epoch) {
         // Shuffle the training data for each epoch
@@ -342,56 +320,16 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train(
         std::iota(indices.begin(), indices.end(), 0);  // Generate indices
         std::shuffle(indices.begin(), indices.end(), std::mt19937(epoch));
 
-        // inefficient
         for (size_t i = 0; i < indices.size(); ++i) {
             X_shuffled[i] = X_train[indices[i]];
             y_shuffled[i] = y_train[indices[i]];
         }
 
         // Train on each data point
-        for (size_t i = 0; i < batch_round; ++i) {
-            // printf("batch_round is %d \n", batch_round);
-            int curr_start = i * batch_size + displacements[pid];
-            //printf("Curr start is %d and expected end is %d, correct end is %d\n", curr_start, curr_start + batch_size, counts[pid] + displacements[pid]);
-            int size = (curr_start + batch_size) >= counts[pid] + displacements[pid] ? displacements[pid] + counts[pid] - curr_start : batch_size;
-            // printf("Size is %d\n", size);
-            // printf("Count for proc %d is %d\n", pid, counts[pid]);
-            for (size_t j = 0; j < size; ++j) {
-                auto [y_hat, loss] = forward(X_shuffled[j + curr_start], 
-                                            y_shuffled[j + curr_start]);  // Forward pass
-                backward(y_shuffled[j + curr_start], y_hat);  // Backpropagation
-                step();  // Update weights using gradients
-            }
-
-            for(int row_i = 0; row_i < rows1; row_i++) {
-                for(int col_j = 0; col_j < cols1; col_j ++) {
-                    send_buffer1[row_i * cols1 + col_j] = linear1.weights[row_i][col_j];
-                }
-            }
-            for(int row_i = 0; row_i < rows2; row_i++) {
-                for(int col_j = 0; col_j < cols2; col_j ++) {
-                    send_buffer2[row_i * cols2 + col_j] = linear2.weights[row_i][col_j];
-                }
-            }
-
-            // printf("----------------------- before MPI_Allreduce -----------------------------\n");
-            //RING METHOD
-                //Within ring method add weights each time
-            MPI_Allreduce(send_buffer1.data(), rec_buffer1.data(), rows1 * cols1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-            MPI_Allreduce(send_buffer2.data(), rec_buffer2.data(), rows2 * cols2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-            
-            //After loop completes divide weights by nproc to get average
-            for(int row_i = 0; row_i < rows1; row_i++) {
-                for(int col_j = 0; col_j < cols1; col_j ++) {
-                    linear1.weights[row_i][col_j] = rec_buffer1[row_i * cols1 + col_j] / nproc;
-                }
-            }
-            for(int row_i = 0; row_i < rows2; row_i++) {
-                for(int col_j = 0; col_j < cols2; col_j ++) {
-                    linear2.weights[row_i][col_j] = rec_buffer2[row_i * cols2 + col_j] / nproc;
-                }
-            }
-            // printf("----------------------- after MPI_Allreduce -----------------------------\n");
+        for (size_t i = 0; i < X_shuffled.size(); ++i) {
+            auto [y_hat, loss] = forward(X_shuffled[i], y_shuffled[i]);  // Forward pass
+            backward(y_shuffled[i], y_hat);  // Backpropagation
+            step();  // Update weights using gradients
         }
 
         // Compute training and test losses after the epoch
@@ -562,7 +500,7 @@ int main(int argc, char* argv[]) {
         // Train the network
         auto start = std::chrono::high_resolution_clock::now();
 
-        auto [train_losses, val_losses] = nn.train_data(X_train, y_train, X_val, y_val, num_epochs, batch_size, nproc, pid, batch_size, nproc, pid);
+        auto [train_losses, val_losses] = nn.train_data(X_train, y_train, X_val, y_val, num_epochs, batch_size, nproc, pid);
         //auto [train_losses, val_losses] = nn.train(X_train, y_train, X_val, y_val, num_epochs);
 
         auto end = std::chrono::high_resolution_clock::now();
