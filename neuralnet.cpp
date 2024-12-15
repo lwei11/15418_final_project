@@ -613,7 +613,7 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train_model_8(
                 }
             };
 
-            // Each rank does forward_i and backward_(9-i) following a pipeline format:
+            // Each rank does forward_i and backward_(7-i) following a pipeline format:
             // Forward direction: 0->1->2->3->4->5->6->7
             // Backward direction: 7->6->5->4->3->2->1->0
 
