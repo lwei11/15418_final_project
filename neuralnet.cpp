@@ -929,8 +929,8 @@ int main(int argc, char* argv[]) {
 
         //auto [train_losses, val_losses] = nn.train_model_2(X_train, y_train, X_val, y_val, num_epochs, batch_size, pid);
         //auto [train_losses, val_losses] = nn.train_model_8(X_train, y_train, X_val, y_val, num_epochs, batch_size, pid);
-        auto [train_losses, val_losses] = nn.train_data(X_train, y_train, X_val, y_val, num_epochs, batch_size, nproc, pid);
-        //auto [train_losses, val_losses] = nn.train(X_train, y_train, X_val, y_val, num_epochs);
+        //auto [train_losses, val_losses] = nn.train_data(X_train, y_train, X_val, y_val, num_epochs, batch_size, nproc, pid);
+        auto [train_losses, val_losses] = nn.train(X_train, y_train, X_val, y_val, num_epochs);
 
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed_time = end - start;
