@@ -57,12 +57,10 @@ public:
     Linear linear4;
     Linear linear5;
     Linear linear6;
-    Linear linear7;
-    Linear linear8;
     SoftMaxCrossEntropy softmax;
     NN(int input_size, int hidden_size, int output_size, Matrix (init_fn)(int, int), double lr);
     std::tuple<Vector, double> forward(const Vector& x, int y);
-    Vector forward_1(const Vector& x, int y);
+    Vector forward_1(const Vector& x);
     std::tuple<Vector, double> forward_2(const Vector& z, int y);
     void backward(int y, const Vector& y_hat);
     Vector backward_2(int y, const Vector& y_hat);
@@ -77,10 +75,14 @@ public:
         const Matrix& X_train, const Vector& y_train,
         const Matrix& X_test, const Vector& y_test,
         int epochs, int batch_size, int nproc, int pid);
-    std::tuple<std::vector<double>, std::vector<double>> train_model(
+    std::tuple<std::vector<double>, std::vector<double>> train_model_2(
         const Matrix& X_train, const Vector& y_train,
         const Matrix& X_test, const Vector& y_test,
-        int epochs, int batch_size, int nproc, int pid);
+        int epochs, int batch_size, int pid);
+    std::tuple<std::vector<double>, std::vector<double>> train_model_8(
+        const Matrix& X_train, const Vector& y_train,
+        const Matrix& X_test, const Vector& y_test,
+        int epochs, int batch_size, int pid);
     std::tuple<Vector, double> test(const Matrix& X, const Vector& y);
 };
 

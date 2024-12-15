@@ -25,26 +25,6 @@ Matrix random_init(int rows, int cols) {
     return matrix;
 }
 
-static Vector flatten_matrix(const Matrix& M) {
-        if (M.empty()) return {};
-        size_t rows = M.size();
-        size_t cols = M[0].size();
-        Vector flat(rows * cols);
-        for (size_t i = 0; i < rows; ++i) {
-            std::copy(M[i].begin(), M[i].end(), flat.begin() + i*cols);
-        }
-        return flat;
-    }
-
-// Helper to reshape a flat vector into a Matrix
-static Matrix reshape_matrix(const Vector& flat, size_t rows, size_t cols) {
-    Matrix M(rows, Vector(cols));
-    for (size_t i = 0; i < rows; ++i) {
-        std::copy(flat.begin() + i*cols, flat.begin() + (i+1)*cols, M[i].begin());
-    }
-    return M;
-}
-
 // SoftMaxCrossEntropy Implementation
 Vector SoftMaxCrossEntropy::softmax(const Vector& z) {
     Vector exp_z(z.size());
@@ -137,14 +117,12 @@ void Linear::step() {
 // Neural Network Implementation
 NN::NN(int input_size, int hidden_size, int output_size, Matrix (*init_fn)(int, int), double lr)
     : linear1(input_size, hidden_size, init_fn, lr),
+      sigmoid(),
       linear2(hidden_size, hidden_size, init_fn, lr),
       linear3(hidden_size, hidden_size, init_fn, lr),
       linear4(hidden_size, hidden_size, init_fn, lr),
       linear5(hidden_size, hidden_size, init_fn, lr),
-      linear6(hidden_size, hidden_size, init_fn, lr),
-      linear7(hidden_size, hidden_size, init_fn, lr),
-      linear8(hidden_size, output_size, init_fn, lr),
-      sigmoid(),
+      linear6(hidden_size, output_size, init_fn, lr),
       softmax() {}
 
 std::tuple<Vector, double> NN::forward(const Vector& x, int y) {
@@ -158,7 +136,7 @@ std::tuple<Vector, double> NN::forward(const Vector& x, int y) {
     return softmax.forward(l6, y);
 }
 
-Vector NN::forward_1(const Vector& x, int y) {
+Vector NN::forward_1(const Vector& x) {
     Vector a = linear1.forward(x);
     Vector z = sigmoid.forward(a);
     Vector b = linear2.forward(z);
@@ -264,26 +242,16 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train_data(
         std::iota(indices.begin(), indices.end(), 0);  // Generate indices
         std::shuffle(indices.begin(), indices.end(), std::mt19937(epoch));
 
-        // inefficient
         for (size_t i = 0; i < indices.size(); ++i) {
             X_shuffled[i] = X_train[indices[i]];
             y_shuffled[i] = y_train[indices[i]];
         }
 
         // Train on each data point
-        for (size_t i = 0; i < batch_round; ++i) {
-            // printf("batch_round is %d \n", batch_round);
+        for (int i = 0; i < batch_round; ++i) {
             int curr_start = i * batch_size + displacements[pid];
             int size = (curr_start + batch_size) >= counts[pid] + displacements[pid] ? displacements[pid] + counts[pid] - curr_start : batch_size;
-            // if (pid == 0) {
-            //     printf("Curr start is %d and expected end is %d, correct end is %d\n", curr_start, curr_start + batch_size, counts[pid] + displacements[pid]);
-            // }
-            // printf("Size is %d\n", size);
-            // printf("Count for proc %d is %d\n", pid, counts[pid]);
-            for (size_t j = 0; j < size; ++j) {
-                // if (pid == 0) {
-                //     printf("Curr idx is %d\n", j + curr_start);
-                // }
+            for (int j = 0; j < size; ++j) {
                 auto [y_hat, loss] = forward(X_shuffled[j + curr_start], 
                                             y_shuffled[j + curr_start]);  // Forward pass
                 backward(y_shuffled[j + curr_start], y_hat);  // Backpropagation
@@ -300,20 +268,10 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train_data(
                     send_buffer2[row_i * cols2 + col_j] = linear2.weights[row_i][col_j];
                 }
             }
-
-            // printf("----------------------- before MPI_Allreduce -----------------------------\n");
-            //auto start = std::chrono::high_resolution_clock::now();
-
+            
+            //Aggregate gradients
             MPI_Allreduce(send_buffer1.data(), rec_buffer1.data(), rows1 * cols1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
             MPI_Allreduce(send_buffer2.data(), rec_buffer2.data(), rows2 * cols2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-            
-            // if (pid == 0 && i == 1) {
-            //     auto end = std::chrono::high_resolution_clock::now();
-            //     std::chrono::duration<double> elapsed_time = end - start;
-
-            //     // Print the result
-            //     std::cout << "Elapsed time: " << elapsed_time.count() << " seconds\n";
-            // }
 
             //After loop completes divide weights by nproc to get average
             for(int row_i = 0; row_i < rows1; row_i++) {
@@ -326,7 +284,6 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train_data(
                     linear2.weights[row_i][col_j] = rec_buffer2[row_i * cols2 + col_j] / nproc;
                 }
             }
-            // printf("----------------------- after MPI_Allreduce -----------------------------\n");
         }
 
         // Compute training and test losses after the epoch
@@ -336,6 +293,7 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train_data(
         train_losses.push_back(train_loss);
         test_losses.push_back(test_loss);
         
+        //If we want to see per epoch stats
         // if (pid == 0) {
         //     std::cout << "Epoch " << (epoch + 1) << ": Train Loss = " << train_loss
         //             << ", Test Loss = " << test_loss << std::endl;
@@ -382,6 +340,7 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train(
         train_losses.push_back(train_loss);
         test_losses.push_back(test_loss);
         
+        //If we want to see per epoch stats
         // std::cout << "Epoch " << (epoch + 1) << ": Train Loss = " << train_loss
         //           << ", Test Loss = " << test_loss << std::endl;
     }
@@ -389,10 +348,10 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train(
     return {train_losses, test_losses};
 }
 
-std::tuple<std::vector<double>, std::vector<double>> NN::train_model(
+std::tuple<std::vector<double>, std::vector<double>> NN::train_model_2(
     const Matrix& X_train, const Vector& y_train,
     const Matrix& X_test, const Vector& y_test,
-    int epochs, int batch_size, int nproc, int pid) {
+    int epochs, int batch_size, int pid) {
 
     std::vector<double> train_losses;
     std::vector<double> test_losses;
@@ -431,7 +390,7 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train_model(
                 // Forward at stage 1
                 std::vector<Vector> A1_batch(current_batch_size);
                 for (int b = 0; b < current_batch_size; ++b) {
-                    A1_batch[b] = forward_1(X_batch[b], 0);
+                    A1_batch[b] = forward_1(X_batch[b]);
                 }
 
                 // Flatten A1_batch
@@ -545,12 +504,324 @@ std::tuple<std::vector<double>, std::vector<double>> NN::train_model(
 
         train_losses.push_back(train_loss);
         test_losses.push_back(test_loss);
-
+        
+        //If we want to see per epoch stats
         // if (pid == 0) {
         //     std::cout << "Epoch " << (epoch + 1) << ": Train Loss = " << train_loss
         //             << ", Test Loss = " << test_loss << std::endl;
         // }
     }
+    return {train_losses, test_losses};
+}
+
+std::tuple<std::vector<double>, std::vector<double>> NN::train_model_8(
+    const Matrix& X_train, const Vector& y_train,
+    const Matrix& X_test, const Vector& y_test,
+    int epochs, int batch_size, int pid) 
+{
+    std::vector<double> train_losses;
+    std::vector<double> test_losses;
+
+    Matrix X_shuffled = X_train;
+    Vector y_shuffled = y_train;
+    int total_samples = (int)X_train.size();
+
+    for (int epoch = 0; epoch < epochs; ++epoch) {
+        std::vector<size_t> indices(total_samples);
+        std::iota(indices.begin(), indices.end(), 0);
+        std::shuffle(indices.begin(), indices.end(), std::mt19937(epoch));
+        for (size_t i = 0; i < indices.size(); ++i) {
+            X_shuffled[i] = X_train[indices[i]];
+            y_shuffled[i] = y_train[indices[i]];
+        }
+
+
+        for (int start = 0; start < total_samples; start += batch_size) {
+            int end = std::min(start + batch_size, total_samples);
+            int current_batch_size = end - start;
+
+            // Extract batch (on Rank 0)
+            Matrix X_batch;
+            Vector y_batch;
+            if (pid == 0) {
+                X_batch.resize(current_batch_size);
+                y_batch.resize(current_batch_size);
+                for (int j = 0; j < current_batch_size; ++j) {
+                    X_batch[j] = X_shuffled[start + j];
+                    y_batch[j] = y_shuffled[start + j];
+                }
+            }
+
+            // Forward/Backward logic for each rank
+            auto send_batch = [&](int dest, const std::vector<Vector>& A_batch, const Vector& y_batch) {
+                int A_dim = (int)A_batch[0].size();
+                // Flatten A_batch
+                std::vector<double> A_flat(current_batch_size * A_dim);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    std::copy(A_batch[b].begin(), A_batch[b].end(), A_flat.begin() + b * A_dim);
+                }
+                MPI_Send(&current_batch_size, 1, MPI_INT, dest, 0, MPI_COMM_WORLD);
+                MPI_Send(&A_dim, 1, MPI_INT, dest, 0, MPI_COMM_WORLD);
+                MPI_Send(A_flat.data(), current_batch_size * A_dim, MPI_DOUBLE, dest, 0, MPI_COMM_WORLD);
+                MPI_Send(y_batch.data(), current_batch_size, MPI_DOUBLE, dest, 0, MPI_COMM_WORLD);
+            };
+
+            auto recv_batch = [&](int src, std::vector<Vector>& A_batch, Vector& y_batch) {
+                int current_batch_size_recv;
+                int A_dim;
+                MPI_Recv(&current_batch_size_recv, 1, MPI_INT, src, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Recv(&A_dim, 1, MPI_INT, src, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                std::vector<double> A_flat(current_batch_size_recv * A_dim);
+                MPI_Recv(A_flat.data(), current_batch_size_recv * A_dim, MPI_DOUBLE, src, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                std::vector<double> y_batch_recv(current_batch_size_recv);
+                MPI_Recv(y_batch_recv.data(), current_batch_size_recv, MPI_DOUBLE, src, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                A_batch.resize(current_batch_size_recv, Vector(A_dim));
+                for (int b = 0; b < current_batch_size_recv; ++b) {
+                    std::copy(A_flat.begin() + b * A_dim,
+                              A_flat.begin() + (b + 1) * A_dim,
+                              A_batch[b].begin());
+                }
+                y_batch = y_batch_recv;
+            };
+
+            //Send helper function
+            auto send_grads = [&](int dest, const std::vector<Vector>& dA_batch) {
+                int dA_dim = (int)dA_batch[0].size();
+                std::vector<double> dA_flat(current_batch_size * dA_dim);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    std::copy(dA_batch[b].begin(), dA_batch[b].end(), dA_flat.begin() + b * dA_dim);
+                }
+                MPI_Send(&dA_dim, 1, MPI_INT, dest, 0, MPI_COMM_WORLD);
+                MPI_Send(dA_flat.data(), current_batch_size * dA_dim, MPI_DOUBLE, dest, 0, MPI_COMM_WORLD);
+            };
+
+            //Recv helper function
+            auto recv_grads = [&](int src, std::vector<Vector>& dA_batch) {
+                int dA_dim;
+                MPI_Recv(&dA_dim, 1, MPI_INT, src, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                std::vector<double> dA_flat(current_batch_size * dA_dim);
+                MPI_Recv(dA_flat.data(), current_batch_size * dA_dim, MPI_DOUBLE, src, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                dA_batch.resize(current_batch_size, Vector(dA_dim));
+                for (int b = 0; b < current_batch_size; ++b) {
+                    std::copy(dA_flat.begin() + b * dA_dim,
+                              dA_flat.begin() + (b + 1) * dA_dim,
+                              dA_batch[b].begin());
+                }
+            };
+
+            // Each rank does forward_i and backward_(9-i) following a pipeline format:
+            // Forward direction: 0->1->2->3->4->5->6->7
+            // Backward direction: 7->6->5->4->3->2->1->0
+
+            if (pid == 0) {
+                // Forward at stage 1
+                std::vector<Vector> A1_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    A1_batch[b] = linear1.forward(X_batch[b]);
+                }
+
+                // Send A1, y to Rank 1
+                send_batch(1, A1_batch, y_batch);
+
+                // Receive dA0 (gradients) from Rank 1
+                std::vector<Vector> dA0_batch;
+                recv_grads(1, dA0_batch);
+
+                // Backward at stage 1
+                for (int b = 0; b < current_batch_size; ++b) {
+                    linear1.backward(dA0_batch[b]);
+                }
+                step();
+
+            } else if (pid == 1) {
+                // Receive A1,y from Rank 0
+                std::vector<Vector> A1_batch; Vector y_batch;
+                recv_batch(0, A1_batch, y_batch);
+
+                // Forward at stage 2
+                std::vector<Vector> A2_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    A2_batch[b] = sigmoid.forward(A1_batch[b]);
+                }
+
+                // Send A2,y to Rank 2
+                send_batch(2, A2_batch, y_batch);
+
+                // Receive dA1 from Rank 2
+                std::vector<Vector> dA1_batch;
+                recv_grads(2, dA1_batch);
+
+                // Backward at stage 2
+                std::vector<Vector> dA0_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    dA0_batch[b] = sigmoid.backward(dA1_batch[b]);
+                }
+
+                // Send dA0 back to Rank 0
+                send_grads(0, dA0_batch);
+
+            } else if (pid == 2) {
+                // Receive A2,y from Rank 1
+                std::vector<Vector> A2_batch; Vector y_batch;
+                recv_batch(1, A2_batch, y_batch);
+
+                // Forward at stage 3
+                std::vector<Vector> A3_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    A3_batch[b] = linear2.forward(A2_batch[b]);
+                }
+
+                // Send A3,y to Rank 3
+                send_batch(3, A3_batch, y_batch);
+
+                // Receive dA2 from Rank 3
+                std::vector<Vector> dA2_batch;
+                recv_grads(3, dA2_batch);
+
+                // Backward at stage 3
+                std::vector<Vector> dA1_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    dA1_batch[b] = linear2.backward(dA2_batch[b]);
+                }
+
+                // Send dA1 to Rank 1
+                send_grads(1, dA1_batch);
+
+            } else if (pid == 3) {
+                std::vector<Vector> A3_batch; Vector y_batch;
+                recv_batch(2, A3_batch, y_batch);
+
+                // Forward at stage 4
+                std::vector<Vector> A4_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    A4_batch[b] = linear3.forward(A3_batch[b]);
+                }
+
+                send_batch(4, A4_batch, y_batch);
+
+                std::vector<Vector> dA3_batch;
+                recv_grads(4, dA3_batch);
+
+                // Backward at stage 4
+                std::vector<Vector> dA2_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    dA2_batch[b] = linear3.backward(dA3_batch[b]);
+                }
+
+                send_grads(2, dA2_batch);
+
+            } else if (pid == 4) {
+                std::vector<Vector> A4_batch; Vector y_batch;
+                recv_batch(3, A4_batch, y_batch);
+
+                // Forward at stage 5
+                std::vector<Vector> A5_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    A5_batch[b] = linear4.forward(A4_batch[b]);
+                }
+
+                send_batch(5, A5_batch, y_batch);
+
+                std::vector<Vector> dA4_batch;
+                recv_grads(5, dA4_batch);
+
+                // Backward at stage 5
+                std::vector<Vector> dA3_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    dA3_batch[b] = linear4.backward(dA4_batch[b]);
+                }
+
+                send_grads(3, dA3_batch);
+
+            } else if (pid == 5) {
+                std::vector<Vector> A5_batch; Vector y_batch;
+                recv_batch(4, A5_batch, y_batch);
+
+                // Forward at stage 6
+                std::vector<Vector> A6_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    A6_batch[b] = linear5.forward(A5_batch[b]);
+                }
+
+                send_batch(6, A6_batch, y_batch);
+
+                std::vector<Vector> dA5_batch;
+                recv_grads(6, dA5_batch);
+
+                // Backward at stage 6
+                std::vector<Vector> dA4_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    dA4_batch[b] = linear5.backward(dA5_batch[b]);
+                }
+
+                send_grads(4, dA4_batch);
+
+            } else if (pid == 6) {
+                std::vector<Vector> A6_batch; Vector y_batch;
+                recv_batch(5, A6_batch, y_batch);
+
+                // Forward at stage 7
+                std::vector<Vector> A7_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    A7_batch[b] = linear6.forward(A6_batch[b]);
+                }
+
+                send_batch(7, A7_batch, y_batch);
+
+                std::vector<Vector> dA6_batch;
+                recv_grads(7, dA6_batch);
+
+                // Backward at stage 7
+                std::vector<Vector> dA5_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    dA5_batch[b] = linear6.backward(dA6_batch[b]);
+                }
+
+                send_grads(5, dA5_batch);
+
+            } else if (pid == 7) {
+                // Receive A7,y from Rank 6
+                std::vector<Vector> A7_batch; Vector y_batch;
+                recv_batch(6, A7_batch, y_batch);
+
+                // Forward at stage 8 produces y_hat
+                std::vector<Vector> y_hat_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    auto [y_hat, loss] = softmax.forward(A7_batch[b], y_batch[b]);
+                    y_hat_batch[b] = y_hat;
+                }
+
+                // Backward at final stage
+                std::vector<Vector> dA7_batch(current_batch_size);
+                for (int b = 0; b < current_batch_size; ++b) {
+                    dA7_batch[b] = softmax.backward(y_batch[b], y_hat_batch[b]);
+                }
+
+                // Send dA7 back to Rank 6
+                send_grads(6, dA7_batch);
+            }
+        }
+
+        // Compute training and test losses after the epoch
+        double train_loss = 0.0;
+        double test_loss = 0.0;
+        train_loss = compute_loss(X_shuffled, y_shuffled);
+        test_loss = compute_loss(X_test, y_test);
+
+        train_losses.push_back(train_loss);
+        test_losses.push_back(test_loss);
+
+        //If we want to see per epoch stats
+        // if (pid == 0) {  
+        //     std::cout << "Epoch " << (epoch + 1) << ": Train Loss = " << train_loss
+        //               << ", Test Loss = " << test_loss << std::endl;
+        // }
+    }
+
     return {train_losses, test_losses};
 }
 
@@ -626,9 +897,6 @@ int main(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &pid);
     // Get total number of processes
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
-    MPI_Status status;
-
-    // printf("Curr proc is %d\n", pid);
 
     // Parse command-line arguments
     std::string train_input = argv[1];
@@ -646,13 +914,6 @@ int main(int argc, char* argv[]) {
         // Load training and validation data
         auto [X_train, y_train] = load_csv(train_input);
         auto [X_val, y_val] = load_csv(validation_input);
-        
-        int count = 0;
-        for (auto& temp : X_train) {
-            count ++;
-        }
-
-        //printf("Num train = %d\n", count);
 
         // Initialize the neural network
         NN nn(
@@ -666,15 +927,18 @@ int main(int argc, char* argv[]) {
         // Train the network
         auto start = std::chrono::high_resolution_clock::now();
 
-        //auto [train_losses, val_losses] = nn.train_model(X_train, y_train, X_val, y_val, num_epochs, batch_size, nproc, pid);
+        //auto [train_losses, val_losses] = nn.train_model_2(X_train, y_train, X_val, y_val, num_epochs, batch_size, pid);
+        auto [train_losses, val_losses] = nn.train_model_8(X_train, y_train, X_val, y_val, num_epochs, batch_size, pid);
         //auto [train_losses, val_losses] = nn.train_data(X_train, y_train, X_val, y_val, num_epochs, batch_size, nproc, pid);
-        auto [train_losses, val_losses] = nn.train(X_train, y_train, X_val, y_val, num_epochs);
+        //auto [train_losses, val_losses] = nn.train(X_train, y_train, X_val, y_val, num_epochs);
 
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed_time = end - start;
 
         // Print the result
-        std::cout << "Elapsed time: " << elapsed_time.count() << " seconds\n";
+        if (pid == 0) {
+            std::cout << "Elapsed time: " << elapsed_time.count() << " seconds\n";
+        }
 
         // Test the network on training and validation sets
         auto [train_predictions, train_error] = nn.test(X_train, y_train);
