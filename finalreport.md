@@ -43,18 +43,17 @@ The implementation was developed from scratch, with no reliance on external neur
 Performance Measure and Experimental Speedup: We measure performance using speedup. Specifically, we compare the time of each run to the sequential program runtime on CPU for 200 or 400  hidden units per layer, 8 layers, batch size of 80 for mini-batch stochastic gradient descent, and 20 epochs, unless otherwise specified. We ran the experiments on GHC machines with this command: mpirun -np <number of processors> ./neuralnet inputs/small/small_train.csv inputs/small/small_validation.csv inputs/small/small_train_out.labels inputs/small/small_validation_out.labels inputs/small/small_metrics_out.txt <number of epochs> <number of hidden units> <init flag> <learning rate> <batch size>. 
 
 ### Speedup Graphs: 
-1. Number of processors’ effect on speedup for data parallel implementation: (400 hidden units per layer, 8 layers, batch size of 80, 20 epochs) \
+1. Number of processors’ effect on speedup for data parallel implementation: (400 hidden units per layer, 8 layers, batch size of 80, 20 epochs)
 <img width="460" alt="1" src="https://github.com/user-attachments/assets/0da2c08c-3b2a-4688-9e92-4007ac5e5a24" />
 
 (We do not make a similar graph for pipeline model parallel implementation, because in our implementation of pipeline model parallelization, each processor will process a fixed number of layers, and with 8 layers, and the number of processors are fixed to be 8.)
 
-2. Batch size’s effect on speedup for pipeline model parallelism and data parallelism: (200 hidden units per layer, 20 epochs) \
+2. Batch size’s effect on speedup for pipeline model parallelism and data parallelism: (200 hidden units per layer, 20 epochs)
 <img width="800" alt="2" src="https://github.com/user-attachments/assets/88d25cad-efe4-469a-b5c5-f24837d4c8fb" />
 
 3. The number of hidden units’ effect on speedup for pipeline model parallelism and data parallelism:
-(8 layers, batch size of 80, 20 epochs) \
+(8 layers, batch size of 80, 20 epochs)
 <img width="800" alt="3" src="https://github.com/user-attachments/assets/b3ccc70c-979c-4fb9-8847-cf431bc77f85" />
-
 
 ### Problem size vs Performance
 Yes, reporting results for different problem sizes is very important because problem size directly impacts performance. Different workloads (batch size vs hidden units) exhibit different execution behavior, which means scaling problem size is necessary to fully utilize parallelization. In our experiments, speedup is mainly influenced by these parameters:
@@ -73,7 +72,7 @@ We overlapped communication and computation to hide data transfer delays, but ba
 Initialization: Time to initialize the processors.
 Computation: Time spent on processing forward/backward passes of the neural network.
 Communication: Overhead of synchronizing gradients and results across processors.
-Communication: Overhead of synchronizing gradients and results across processors.
+Communication: Overhead of synchronizing gradients and results across processors. \
 Data Parallelism \
 10% Initialization \
 70% Computation \
