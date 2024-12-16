@@ -94,7 +94,7 @@ For model parallelism, the CPU works well for smaller hidden unit counts but str
 ## References
 Github Link: https://github.com/lwei11/15418_final_project \
 10-301: Structure and idea of neural network implementation from scratch \
-15-418 Slides: Ideas for how to implement the different types of parallelism
+15-418 Slide 24: Ideas for how to implement the different types of parallelism
 
 ## Distribution of Work
 Everything was collaborative, we each did an equivalent amount of work.
