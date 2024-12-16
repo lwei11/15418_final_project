@@ -5,6 +5,7 @@ We implemented data and pipeline model parallelism for a neural network that we 
 
 ## Background
 For our project, we implemented a deep neural network entirely from scratch (meaning no preexisting libraries or functions like Pytorch). Our network was made of a sequence of various types of layers such as linear layers, a sigmoid activation layer, and a softmax output layer. We used the linear and sigmoid layers for most of the calculations and the softmax layer to finalize the output. We wanted to test our parallelization in a model that used both linear and non-linear computations to make sure that we saw the benefits for different types of neural networks. 
+![Plain model](https://github.com/user-attachments/assets/2220c4f8-f0b0-44af-a575-f389f9082e1a)
 ### Key Data Structures
 We have a few main data structures that we use for our deep neural network. The first is the weight matrices, which are used to actually train the model and keep track of the parameters for the computational layers. We frequently update these layers since they need to be changed every time the data is passed through one of our layers. Another data structure we use a lot is the bias vector. This is used to introduce a little more freedom into the data and allow the neural network to be more accurate when testing it at the end. Finally, we store the activations for each layer during forward propagation so we can use them again during the backward step. For training the network, we have some data and associated labels stored in a csv file which we import into our main file whenever we run the network. 
 ### Key Operations on Data Structures
@@ -25,9 +26,11 @@ We created two new training functions for our deep neural network that each util
 Our implementation was written in C++ and we used MPI for all parallelization/communication. The computers we targeted were multi core CPU processors where we attempted to use MPI to distribute work across them and communication information between them. For the technologies used for the neural network itself, it was completely implemented from scratch and did not use any preexisting libraries for setup, computation, or analysis. This allowed us to have a greater degree of control over what was parallelized and made sure no auto optimizations were implemented without our knowledge.
 ### Mapping the Problem to Parallel Machines
 We utilized two main forms of parallelism: data and pipeline model parallelism. For our data parallel training function, we partitioned the data into chunks and assigned each to its own processor. At the end of the epoch or batch round, all gradients were aggregated using MPI_Allreduce and synched across all processors. This allowed for consistent models and better accuracy. See the diagram below for a visual of how this worked:
-### DIAGRAM
+![data parallelism](https://github.com/user-attachments/assets/fcc3f402-4091-442d-9832-89f3fcdd2b3d)
+
 For our pipeline model parallel training function, we divided the layers of a neural network and assigned them each to a processor. Because this required the division of functions, we had to hardcode it for different numbers of processors rather than dynamically allocate data as in the data parallel version. For this version of parallelism, the data was also split into chunks and these chunks were passed along the processors in a pipeline format. Each processor would receive a chunk, perform its assigned layer’s calculations on the chunk, and then pass it forward through the pipeline. At the end, each processor would then send the chunk backwards through the pipeline for the backpropagation step. Finally, the weights would be updated at the end. See the diagram below for the visualization of this version:
-### DIAGRAM
+![model parallelism](https://github.com/user-attachments/assets/bcaba037-d95b-4a5c-80aa-c3ce5ef7cd03)
+
 ### Changes to the Serial Algorithm
 The main changes we made to the serial algorithm were batching and communication. Each form of parallelism used batching in some capacity and we had to change the algorithm to account for this. Additionally, for pipeline parallelism we had to change the forward and backward functions since we were splitting up the layers of the network. However, we did not parallelize the computations themselves i.e. the actual layers were left unchanged.
 ### Optimization Process
