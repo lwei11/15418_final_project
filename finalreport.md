@@ -90,5 +90,13 @@ Model parallelism, on the other hand, spends a much larger portion of time on co
 The GHC machine (CPU-based) was a sound choice for smaller batch sizes and fewer hidden units. However, a GPU might have been better for large batch sizes and larger hidden units because GPUs excel at parallelizing matrix multiplications in neural networks. For data parallelism, a GPU could reduce synchronization and computation time.
 For model parallelism, the CPU works well for smaller hidden unit counts but struggles with memory bandwidth. However at the same time, dividing the data too much would cause the accuracy to suffer, so for this to actually be beneficial we would likely also need an extremely large dataset.
 
+## References
+Github Link: https://github.com/lwei11/15418_final_project
+10-301: Structure and idea of neural network implementation from scratch
+15-418 Slides: Ideas for how to implement the different types of parallelism
+
+## Distribution of Work
+Everything was collaborative, we each did an equivalent amount of work.
+
 
 
