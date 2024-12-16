@@ -37,3 +37,58 @@ The implementation was developed from scratch, with no reliance on external neur
 
 ## Results
 Performance Measure and Experimental Speedup: We measure performance using speedup. Specifically, we compare the time of each run to the sequential program runtime on CPU for 200 or 400  hidden units per layer, 8 layers, batch size of 80 for mini-batch stochastic gradient descent, and 20 epochs, unless otherwise specified. We ran the experiments on GHC machines with this command: mpirun -np <number of processors> ./neuralnet inputs/small/small_train.csv inputs/small/small_validation.csv inputs/small/small_train_out.labels inputs/small/small_validation_out.labels inputs/small/small_metrics_out.txt <number of epochs> <number of hidden units> <init flag> <learning rate> <batch size>. 
+
+### Speedup Graphs: 
+1. Number of processors’ effect on speedup for data parallel implementation: (400 hidden units per layer, 8 layers, batch size of 80, 20 epochs)
+
+### GRAPH
+(We do not make a similar graph for pipeline model parallel implementation, because in our implementation of pipeline model parallelization, each processor will process a fixed number of layers, and with 8 layers, and the number of processors are fixed to be 8.)
+
+2. Batch size’s effect on speedup for pipeline model parallelism and data parallelism: (200 hidden units per layer, 20 epochs)
+### GRAPH
+
+3. The number of hidden units’ effect on speedup for pipeline model parallelism and data parallelism:
+(8 layers, batch size of 80, 20 epochs)
+### GRAPH
+
+### Problem size vs Performance: Yes, reporting results for different problem sizes is very important because problem size directly impacts performance. Different workloads (batch size vs hidden units) exhibit different execution behavior, which means scaling problem size is necessary to fully utilize parallelization. In our experiments, speedup is mainly influenced by these parameters:
+Batch Size: As batch size increases, speedup improves for both data parallelism and model parallelism. For example, in data parallelism, speedup rises from 1.0 to 3.5 as batch size goes from 0 to 80. Similarly, in model parallelism, speedup grows from 3.0 to 3.9. This shows larger batch sizes lead to better parallelism because the work per processor increases, which reduces the overhead.
+Hidden Units: Speedup also improves as the number of hidden units increases. For example, in data parallelism, speedup jumps from 0.2 to 4.0 when hidden units increase from 10 to 400. For model parallelism, the behavior is more complex, showing fluctuations initially but then reaching over 3.7 speedup.
+Speedup Limitations: We identified and tested several reasons for how speedup is limited. 
+1. Processors initialization and communication overhead: in the data parallel graph for different numbers of processors, speedup increases linearly but only up to ~4.1x for 8 cores. Ideally, it should be 8x. The limitation mainly comes from dependencies and communication overhead when splitting data across cores. To verify our idea, we tested a completely sequential version without any implementation of parallelism and launched multiple processors with the sequential version, and the initialization and overall run time had an apparent increase when the number of processors increased. 
+2. Communication Overhead: When the number of hidden units is small, the pipeline model parallelism suffers from significant performance dip. This is likely due to these two reasons: a. pipeline model communications more frequently (once per batch per layer) than the data model (once per batch), and b. The number of hidden units is the size weight, which is the size of the message being communicated, and with the number of hidden units is small, the message is not fully filled, and the communication overhead is more significant relative to message size. 
+3. Data compatibility: We noticed that there is a dip for pipeline model parallelism when the number of hidden units is 100. We think that this is likely because the data happens to be unfit for 100 hidden units, because the performance for data parallelism is also not as good as this size of hidden units, but it is less obvious since the communication is less frequent. 
+4. Sequential training: in the data parallel approach, each processor still trains the model sequentially with a subset of a mini-batch, and in the pipeline parallel approach, each processor still computes the weight of each layer by calculating the batch sequentially. Thus, each model has some part running sequentially. We think that it would be optimal if the two approaches are combined: in each iteration, a subset of processors processes a layer collectively, and each processor in the subset processes a subset of the mini-batch. This was our stretch goal, but we ended up not having enough time to implement this, and we are planning to experiment with the combined model more during the winter break. 
+5. Memory-Bound Issues:
+In model parallelism, where each processor handles different layers, performance improves with hidden units, but fluctuations at lower sizes suggest data transfer or memory bandwidth limitations.
+In conclusion, even though the speedups did not achieve theoretical limits, a solid analysis shows where bottlenecks occur: in data parallelism, increasing batch size and hidden units improves performance, but communication overhead caps speedup; in model parallelism, distributing layers efficiently improves performance at large hidden unit counts, but data transfer issues cause early dips.
+### Deeper analysis
+We overlapped communication and computation to hide data transfer delays, but based on our estimates, here are the three main components and an estimated time breakdown of each component: 
+Initialization: Time to initialize the processors.
+Computation: Time spent on processing forward/backward passes of the neural network.
+Communication: Overhead of synchronizing gradients and results across processors.
+Communication: Overhead of synchronizing gradients and results across processors.
+Parallel Method
+Initialization (%)
+Computation (%)
+Communication (%)
+Data Parallelism
+10% Initialization
+70% Computation
+20% Communication
+Pipeline Model Parallelism
+15% Initialization
+70% Computation
+40% Communication
+(In pipeline Model parallelism, the number do not sum up to 100%, because some computation and communication are overlapped). 
+In data parallelism, the majority of the time is spent on computation, approximately 70%, as each processor independently performs forward and backward passes on a subset of the data. Initialization takes a small fraction of the time (10%), as it mainly involves setting up processors and distributing the data. However, communication overhead accounts for 20% of the time, particularly as the number of processors increases, requiring frequent synchronization of gradients.
+Model parallelism, on the other hand, spends a much larger portion of time on communication (around 40%) because processors need to synchronize at layer boundaries. Initialization is 15%, slightly higher at 10% from the data parallel approach, since splitting the network across processors involves additional setup. Computation contributes to about 70% of the total time, with its dominance increasing as the number of hidden units grows. This division highlights that model parallelism is more sensitive to communication overhead, while data parallelism is heavily influenced by the amount of computation and batch size. The number do not sum up to 100%, because some computation and communication are overlapped in this approach.
+
+
+
+### Choice of machine
+The GHC machine (CPU-based) was a sound choice for smaller batch sizes and fewer hidden units. However, a GPU might have been better for large batch sizes and larger hidden units because GPUs excel at parallelizing matrix multiplications in neural networks. For data parallelism, a GPU could reduce synchronization and computation time.
+For model parallelism, the CPU works well for smaller hidden unit counts but struggles with memory bandwidth. However at the same time, dividing the data too much would cause the accuracy to suffer, so for this to actually be beneficial we would likely also need an extremely large dataset.
+
+
+
