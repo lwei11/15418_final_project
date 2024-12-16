@@ -51,7 +51,8 @@ Performance Measure and Experimental Speedup: We measure performance using speed
 (8 layers, batch size of 80, 20 epochs)
 ### GRAPH
 
-### Problem size vs Performance: Yes, reporting results for different problem sizes is very important because problem size directly impacts performance. Different workloads (batch size vs hidden units) exhibit different execution behavior, which means scaling problem size is necessary to fully utilize parallelization. In our experiments, speedup is mainly influenced by these parameters:
+### Problem size vs Performance
+Yes, reporting results for different problem sizes is very important because problem size directly impacts performance. Different workloads (batch size vs hidden units) exhibit different execution behavior, which means scaling problem size is necessary to fully utilize parallelization. In our experiments, speedup is mainly influenced by these parameters:
 Batch Size: As batch size increases, speedup improves for both data parallelism and model parallelism. For example, in data parallelism, speedup rises from 1.0 to 3.5 as batch size goes from 0 to 80. Similarly, in model parallelism, speedup grows from 3.0 to 3.9. This shows larger batch sizes lead to better parallelism because the work per processor increases, which reduces the overhead.
 Hidden Units: Speedup also improves as the number of hidden units increases. For example, in data parallelism, speedup jumps from 0.2 to 4.0 when hidden units increase from 10 to 400. For model parallelism, the behavior is more complex, showing fluctuations initially but then reaching over 3.7 speedup.
 Speedup Limitations: We identified and tested several reasons for how speedup is limited. 
