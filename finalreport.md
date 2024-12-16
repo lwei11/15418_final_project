@@ -5,7 +5,7 @@ We implemented data and pipeline model parallelism for a neural network that we 
 
 ## Background
 For our project, we implemented a deep neural network entirely from scratch (meaning no preexisting libraries or functions like Pytorch). Our network was made of a sequence of various types of layers such as linear layers, a sigmoid activation layer, and a softmax output layer. We used the linear and sigmoid layers for most of the calculations and the softmax layer to finalize the output. We wanted to test our parallelization in a model that used both linear and non-linear computations to make sure that we saw the benefits for different types of neural networks. 
-<img width="949" alt="Forward" src="https://github.com/user-attachments/assets/2220c4f8-f0b0-44af-a575-f389f9082e1a">
+<img width="600" alt="Forward" src="https://github.com/user-attachments/assets/2220c4f8-f0b0-44af-a575-f389f9082e1a">
 
 ### Key Data Structures
 We have a few main data structures that we use for our deep neural network. The first is the weight matrices, which are used to actually train the model and keep track of the parameters for the computational layers. We frequently update these layers since they need to be changed every time the data is passed through one of our layers. Another data structure we use a lot is the bias vector. This is used to introduce a little more freedom into the data and allow the neural network to be more accurate when testing it at the end. Finally, we store the activations for each layer during forward propagation so we can use them again during the backward step. For training the network, we have some data and associated labels stored in a csv file which we import into our main file whenever we run the network. 
