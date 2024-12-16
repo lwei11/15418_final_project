@@ -68,19 +68,15 @@ Initialization: Time to initialize the processors.
 Computation: Time spent on processing forward/backward passes of the neural network.
 Communication: Overhead of synchronizing gradients and results across processors.
 Communication: Overhead of synchronizing gradients and results across processors.
-Parallel Method
-Initialization (%)
-Computation (%)
-Communication (%)
-Data Parallelism
-10% Initialization
-70% Computation
-20% Communication
-Pipeline Model Parallelism
-15% Initialization
-70% Computation
-40% Communication
-(In pipeline Model parallelism, the number do not sum up to 100%, because some computation and communication are overlapped). 
+Data Parallelism \
+10% Initialization \
+70% Computation \
+20% Communication \
+Pipeline Model Parallelism \
+15% Initialization \
+70% Computation \
+40% Communication \
+(In pipeline Model parallelism, the number do not sum up to 100%, because some computation and communication are overlapped). \
 In data parallelism, the majority of the time is spent on computation, approximately 70%, as each processor independently performs forward and backward passes on a subset of the data. Initialization takes a small fraction of the time (10%), as it mainly involves setting up processors and distributing the data. However, communication overhead accounts for 20% of the time, particularly as the number of processors increases, requiring frequent synchronization of gradients.
 Model parallelism, on the other hand, spends a much larger portion of time on communication (around 40%) because processors need to synchronize at layer boundaries. Initialization is 15%, slightly higher at 10% from the data parallel approach, since splitting the network across processors involves additional setup. Computation contributes to about 70% of the total time, with its dominance increasing as the number of hidden units grows. This division highlights that model parallelism is more sensitive to communication overhead, while data parallelism is heavily influenced by the amount of computation and batch size. The number do not sum up to 100%, because some computation and communication are overlapped in this approach.
 
@@ -91,8 +87,8 @@ The GHC machine (CPU-based) was a sound choice for smaller batch sizes and fewer
 For model parallelism, the CPU works well for smaller hidden unit counts but struggles with memory bandwidth. However at the same time, dividing the data too much would cause the accuracy to suffer, so for this to actually be beneficial we would likely also need an extremely large dataset.
 
 ## References
-Github Link: https://github.com/lwei11/15418_final_project
-10-301: Structure and idea of neural network implementation from scratch
+Github Link: https://github.com/lwei11/15418_final_project \
+10-301: Structure and idea of neural network implementation from scratch \
 15-418 Slides: Ideas for how to implement the different types of parallelism
 
 ## Distribution of Work
